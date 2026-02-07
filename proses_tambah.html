@@ -1,0 +1,45 @@
+<!-- Modifikasi pada bagian form (di bagian paling bawah sebelum </form>) -->
+<script>
+// ... (kode JavaScript yang sudah ada sebelumnya) ...
+
+// Ganti validasi form sebelum submit
+document.querySelector('form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const latitude = document.getElementById('latitude').value;
+    const longitude = document.getElementById('longitude').value;
+    const trafficLevel = document.getElementById('traffic_level').value;
+    const alamat = document.getElementById('alamat').value;
+    
+    if (!latitude || !longitude) {
+        alert('Silakan pilih lokasi di peta terlebih dahulu!');
+        return;
+    }
+    
+    if (!trafficLevel) {
+        alert('Silakan klik peta untuk mendeteksi status kemacetan!');
+        return;
+    }
+    
+    if (!alamat.trim()) {
+        alert('Alamat tidak boleh kosong!');
+        return;
+    }
+    
+    // Kumpulkan semua data form
+    const formData = {
+        alamat: document.getElementById('alamat').value,
+        latitude: document.getElementById('latitude').value,
+        longitude: document.getElementById('longitude').value,
+        kecamatan: document.getElementById('kecamatan').value,
+        kota: document.getElementById('kota').value,
+        provinsi: document.getElementById('provinsi').value,
+        kode_pos: document.getElementById('kode_pos').value,
+        traffic_level: document.getElementById('traffic_level').value
+    };
+    
+    // Buat URL dengan parameter data
+    const urlParams = new URLSearchParams(formData);
+    window.location.href = `proses_tambah.html?${urlParams.toString()}`;
+});
+</script>

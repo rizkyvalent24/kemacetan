@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Ubah Lokasi Kemacetan</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Mapbox -->
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+
+<!-- Geocoder -->
+<link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js"></script>
+
+<!-- Tailwind + DaisyUI -->
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@2.18.1/dist/full.css" rel="stylesheet">
+
+<!-- Database Local -->
+<script src="database.js"></script>
+
+<style>
+body {
+    background: linear-gradient(135deg,#020617,#0f172a,#1e293b);
+}
+
+.glass {
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(16px);
+}
+
+.input {
+    background-color: #f3f4f6;
+    color: #1e293b;
+}
+</style>
+</head>
+
+<body class="min-h-screen text-slate-800">
+
+<div class="max-w-7xl mx-auto px-6 py-10 space-y-8">
+
+<!-- ================= HEADER ================= -->
+<div class="rounded-3xl bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 text-white p-8 shadow-2xl">
+    <h1 class="text-3xl font-extrabold tracking-wide text-center">
+        ✏️ Ubah Data Lokasi Kemacetan
+    </h1>
+</div>
+
+<div class="glass rounded-3xl shadow-2xl p-8 border border-white/40">
+    <div id="loading" class="text-center py-8">
+        <div class="loading loading-spinner loading-lg"></div>
+        <p class="mt-4">Memuat data lokasi...</p>
+    </div>
+    
+    <form id="editForm" class="hidden">
+        <!-- MAP -->
+        <div class="mb-8">
+            <div id="map" class="w-full h-[50vh] rounded-2xl shadow"></div>
+        </div>
+
+        <!-- FORM -->
+        <div class="grid md:grid-cols-2 gap-8">
+            <!-- KIRI -->
+            <div class="space-y-4">
+                <div>
+                    <label class="font-semibold text-gray-700">Cari Lokasi</label>
+                    <div id="geocoder" class="mt-1"></div>
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Alamat</label>
+                    <input name="alamat" id="alamat" class="input input-bordered w-full" required>
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Kecamatan</label>
+                    <input name="kecamatan" id="kecamatan" class="input input-bordered w-full">
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Kota / Kabupaten</label>
+                    <input name="kota" id="kota" class="input input-bordered w-full">
+                </div>
+            </div>
+
+            <!-- KANAN -->
+            <div class="space-y-4">
+                <div>
+                    <label class="font-semibold text-gray-700">Latitude</label>
+                    <input name="latitude" id="latitude" class="input input-bordered w-full bg-slate-100" readonly required>
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Longitude</label>
+                    <input name="longitude" id="longitude" class="input input-bordered w-full bg-slate-100" readonly required>
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Provinsi</label>
+                    <input name="provinsi" id="provinsi" class="input input-bordered w-full">
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Kode Pos</label>
+                    <input name="kode_pos" id="kode_pos" class="input input-bordered w-full">
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Status Kemacetan</label>
+                    <select name="traffic_level" id="traffic_level" class="select select-bordered w-full font-semibold" required>
+                        <option value="Lancar" class="text-green-700">Lancar</option>
+                        <option value="Padat" class="text-yellow-700">Padat</option>
+                        <option value="Macet" class="text-red-700">Macet</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- TOMBOL AKSI -->
+        <div class="text-center pt-10 flex justify-center gap-4">
+            <button type="button" onclick="window.location.href='index.html'" class="btn btn-outline btn-wide">
+                ↩️ Batal
+            </button>
+            <button type="submit" class="btn btn-primary btn-wide shadow-lg">
+                💾 Simpan Perubahan
+            </button>
+        </div>
+    </form>
+    
+    <div id="notFound" class="hidden text-center py-8">
+        <div class="text-red-500 text-6xl mb-4">❌</div>
+        <h2 class="text-2xl font-bold mb-4">Data Tidak Ditemukan</h2>
+        <p class="mb-6">Data lokasi yang dimaksud tidak ditemukan dalam database.</p>
+        <a href="index.html" class="btn btn-primary">Kembali ke Dashboard</a>
+    </div>
+</div>
+
+<script>
+// Token Mapbox
+mapboxgl.accessToken = 'pk.eyJ1IjoidmFsZW50MjQiLCJhIjoiY21rNjR4OXh0MHF0YzNkb2xlc25yeWcxaiJ9.2Uz3tgUNfRG7d7B4b3I9FA';
+
+let map = null;
+let marker = null;
+
+// Ambil parameter no dari URL
+const urlParams = new URLSearchParams(window.location.search);
+const no = urlParams.get('no');
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (!no) {
+        showNotFound();
+        return;
+    }
+    
+    // Ambil data dari database
+    const lokasi = Database.getLokasiById(no);
+    
+    if (!lokasi) {
+        showNotFound();
+        return;
+    }
+    
+    // Isi form dengan data
+    document.getElementById('alamat').value = lokasi.alamat;
+    document.getElementById('latitude').value = lokasi.latitude;
+    document.getElementById('longitude').value = lokasi.longitude;
+    document.getElementById('kecamatan').value = lokasi.kecamatan;
+    document.getElementById('kota').value = lokasi.kota;
+    document.getElementById('provinsi').value = lokasi.provinsi;
+    document.getElementById('kode_pos').value = lokasi.kode_pos;
+    document.getElementById('traffic_level').value = lokasi.traffic_level;
+    
+    // Inisialisasi peta
+    initMap(lokasi.latitude, lokasi.longitude);
+    
+    // Sembunyikan loading, tampilkan form
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('editForm').classList.remove('hidden');
+});
+
+function initMap(lat, lon) {
+    map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v11',
+        center: [lon, lat],
+        zoom: 14
+    });
+    
+    marker = new mapboxgl.Marker()
+        .setLngLat([lon, lat])
+        .addTo(map);
+    
+    // Inisialisasi geocoder
+    const geocoder = new MapboxGeocoder({
+        accessToken: mapboxgl.accessToken,
+        mapboxgl: mapboxgl,
+        marker: false
+    });
+    
+    document.getElementById('geocoder').appendChild(geocoder.onAdd(map));
+    
+    // Event ketika peta diklik
+    map.on('click', (e) => {
+        const newLat = e.lngLat.lat;
+        const newLon = e.lngLat.lng;
+        
+        document.getElementById('latitude').value = newLat;
+        document.getElementById('longitude').value = newLon;
+        
+        marker.setLngLat([newLon, newLat]);
+    });
+    
+    // Event ketika lokasi dipilih dari geocoder
+    geocoder.on('result', (e) => {
+        const { center, place_name, context } = e.result;
+        
+        document.getElementById('longitude').value = center[0];
+        document.getElementById('latitude').value = center[1];
+        document.getElementById('alamat').value = place_name;
+        
+        // Parse informasi lokasi
+        parseLocationContext(context);
+        
+        marker.setLngLat(center);
+        map.flyTo({ center: center, zoom: 15 });
+    });
+}
+
+function parseLocationContext(context) {
+    let kecamatan = '';
+    let kota = '';
+    let provinsi = '';
+    let kodePos = '';
+    
+    if (context) {
+        context.forEach(item => {
+            if (item.id.includes('place')) {
+                kecamatan = item.text;
+            } else if (item.id.includes('district')) {
+                kecamatan = item.text;
+            } else if (item.id.includes('region')) {
+                kota = item.text;
+            } else if (item.id.includes('postcode')) {
+                kodePos = item.text;
+            } else if (item.id.includes('country')) {
+                provinsi = item.text;
+            }
+        });
+    }
+    
+    document.getElementById('kecamatan').value = kecamatan;
+    document.getElementById('kota').value = kota;
+    document.getElementById('provinsi').value = provinsi;
+    document.getElementById('kode_pos').value = kodePos;
+}
+
+function showNotFound() {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('notFound').classList.remove('hidden');
+}
+
+// Event submit form
+document.getElementById('editForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = {
+        alamat: document.getElementById('alamat').value,
+        latitude: document.getElementById('latitude').value,
+        longitude: document.getElementById('longitude').value,
+        kecamatan: document.getElementById('kecamatan').value,
+        kota: document.getElementById('kota').value,
+        provinsi: document.getElementById('provinsi').value,
+        kode_pos: document.getElementById('kode_pos').value,
+        traffic_level: document.getElementById('traffic_level').value
+    };
+    
+    // Update data di database
+    const success = Database.updateLokasi(no, formData);
+    
+    if (success) {
+        alert('Data berhasil diperbarui!');
+        window.location.href = 'index.html';
+    } else {
+        alert('Gagal memperbarui data!');
+    }
+});
+</script>
+
+</body>
+</html>

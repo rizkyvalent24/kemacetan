@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Tambah Lokasi Kemacetan</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Mapbox -->
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+
+<!-- Geocoder -->
+<link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js"></script>
+
+<!-- Tailwind + DaisyUI -->
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@2.18.1/dist/full.css" rel="stylesheet">
+
+<!-- Database Local -->
+<script src="database.js"></script>
+
+<style>
+body {
+    background: linear-gradient(135deg,#020617,#0f172a,#1e293b);
+}
+
+/* glass card effect */
+.glass {
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(16px);
+}
+
+/* input warna default */
+.input {
+    background-color: #f3f4f6; /* slate-100 */
+    color: #1e293b; /* teks gelap */
+}
+</style>
+</head>
+
+<body class="min-h-screen text-slate-800">
+
+<form id="formTambah" method="post">
+
+<div class="max-w-7xl mx-auto px-6 py-10 space-y-8">
+
+<!-- ================= HEADER ================= -->
+<div class="rounded-3xl bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 text-white p-8 shadow-2xl">
+    <h1 class="text-3xl font-extrabold tracking-wide text-center">
+        📍 Tambah Data Lokasi Kemacetan
+    </h1>
+    <p class="opacity-90 mt-1 text-center">
+        Klik peta untuk menentukan lokasi & status lalu lintas akan terisi otomatis
+    </p>
+</div>
+
+<!-- ================= MAP ================= -->
+<div class="glass rounded-3xl shadow-2xl p-4 border border-white/40">
+    <div id="map" class="w-full h-[60vh] rounded-2xl shadow"></div>
+</div>
+
+<!-- ================= FORM ================= -->
+<div class="glass rounded-3xl shadow-2xl p-8 border border-white/40">
+
+<div class="grid md:grid-cols-2 gap-8">
+
+<!-- KIRI -->
+<div class="space-y-4">
+
+    <div>
+        <label class="font-semibold text-gray-700">Cari Lokasi</label>
+        <div id="geocoder" class="mt-1"></div>
+    </div>
+
+    <div>
+        <label class="font-semibold text-gray-700">Alamat</label>
+        <input name="alamat" id="alamat" class="input input-bordered w-full" placeholder="Masukkan alamat lengkap" required>
+    </div>
+
+    <div>
+        <label class="font-semibold text-gray-700">Kecamatan</label>
+        <input name="kecamatan" id="kecamatan" class="input input-bordered w-full" placeholder="Nama kecamatan">
+    </div>
+
+    <div>
+        <label class="font-semibold text-gray-700">Kota / Kabupaten</label>
+        <input name="kota" id="kota" class="input input-bordered w-full" placeholder="Nama kota/kabupaten">
+    </div>
+
+</div>
+
+<!-- KANAN -->
+<div class="space-y-4">
+
+    <div>
+        <label class="font-semibold text-gray-700">Latitude</label>
+        <input name="latitude" id="latitude" class="input input-bordered w-full bg-slate-100" readonly placeholder="Pilih lokasi di peta" required>
+    </div>
+
+    <div>
+        <label class="font-semibold text-gray-700">Longitude</label>
+        <input name="longitude" id="longitude" class="input input-bordered w-full bg-slate-100" readonly placeholder="Pilih lokasi di peta" required>
+    </div>
+
+    <div>
+        <label class="font-semibold text-gray-700">Provinsi</label>
+        <input name="provinsi" id="provinsi" class="input input-bordered w-full" placeholder="Nama provinsi">
+    </div>
+
+    <div>
+        <label class="font-semibold text-gray-700">Kode Pos</label>
+        <input name="kode_pos" id="kode_pos" class="input input-bordered w-full" placeholder="Kode pos">
+    </div>
+
+    <!-- STATUS KEMACETAN OTOMATIS -->
+    <div>
+        <label class="font-semibold text-gray-700">Status Kemacetan</label>
+        <div id="status_kemacetan_container">
+            <input name="traffic_level" id="traffic_level" 
+                class="input input-bordered w-full font-semibold bg-gray-200"
+                readonly placeholder="Klik lokasi di peta untuk mendeteksi status" required>
+        </div>
+        <div id="status_loading" class="hidden mt-2">
+            <div class="flex items-center text-blue-600">
+                <svg class="animate-spin -ml-1 mr-3 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-sm">Mendeteksi status kemacetan...</span>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+</div>
+
+<!-- TOMBOL AKSI -->
+<div class="text-center pt-10 flex justify-center gap-4">
+    <button type="button" onclick="window.location.href='index.html'" class="btn btn-outline btn-wide">
+        ↩️ Kembali
+    </button>
+    <button type="submit" class="btn btn-primary btn-wide shadow-lg">
+        💾 Simpan Data
+    </button>
+</div>
+
+</div>
+</form>
+
+<script>
+// Pastikan database diinisialisasi
+Database.initDatabase();
+
+// Token Mapbox (gunakan token Anda sendiri jika diperlukan)
+mapboxgl.accessToken = 'pk.eyJ1IjoidmFsZW50MjQiLCJhIjoiY21rNjR4OXh0MHF0YzNkb2xlc25yeWcxaiJ9.2Uz3tgUNfRG7d7B4b3I9FA';
+
+// Inisialisasi peta dengan lokasi default Jakarta
+const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/streets-v11',
+    center: [106.816, -6.200], // Jakarta
+    zoom: 11
+});
+
+let marker = null;
+
+// Inisialisasi geocoder
+const geocoder = new MapboxGeocoder({
+    accessToken: mapboxgl.accessToken,
+    mapboxgl: mapboxgl,
+    marker: false
+});
+
+document.getElementById('geocoder').appendChild(geocoder.onAdd(map));
+
+// Fungsi untuk mengatur warna dan tampilan status kemacetan
+function setTrafficStatus(status) {
+    const trafficLevelInput = document.getElementById('traffic_level');
+    trafficLevelInput.value = status;
+    
+    // Reset kelas
+    trafficLevelInput.className = "input input-bordered w-full font-semibold";
+    
+    // Tambahkan kelas berdasarkan status
+    if (status === 'Lancar') {
+        trafficLevelInput.classList.add('bg-green-200', 'text-green-900', 'border-green-400');
+    } else if (status === 'Padat') {
+        trafficLevelInput.classList.add('bg-yellow-200', 'text-yellow-900', 'border-yellow-400');
+    } else if (status === 'Macet') {
+        trafficLevelInput.classList.add('bg-red-200', 'text-red-900', 'border-red-400');
+    } else {
+        trafficLevelInput.classList.add('bg-gray-200', 'text-gray-900');
+    }
+}
+
+// Fungsi untuk mendeteksi status kemacetan berdasarkan lokasi (simulasi)
+function detectTrafficStatus(lat, lon) {
+    // Tampilkan loading indicator
+    document.getElementById('status_loading').classList.remove('hidden');
+    
+    // Simulasi delay untuk meniru proses pengambilan data
+    setTimeout(() => {
+        // Simulasi deteksi status kemacetan berdasarkan area Jakarta
+        let status = 'Lancar'; // default
+        
+        // Area-area tertentu di Jakarta yang sering macet (simulasi)
+        const trafficZones = [
+            {lat: -6.2088, lon: 106.8456, radius: 0.02, status: 'Macet'},    // Sudirman
+            {lat: -6.1865, lon: 106.8222, radius: 0.015, status: 'Padat'},   // Thamrin
+            {lat: -6.1781, lon: 106.7950, radius: 0.018, status: 'Macet'},   // S. Parman
+            {lat: -6.2172, lon: 106.8301, radius: 0.02, status: 'Padat'},    // Rasuna Said
+            {lat: -6.1465, lon: 106.8157, radius: 0.025, status: 'Lancar'},  // Hayam Wuruk
+            {lat: -6.1894, lon: 106.8926, radius: 0.022, status: 'Padat'}    // Rawamangun
+        ];
+        
+        // Cek apakah posisi berada di zona kemacetan tertentu
+        for (const zone of trafficZones) {
+            const distance = Math.sqrt(
+                Math.pow(lat - zone.lat, 2) + 
+                Math.pow(lon - zone.lon, 2)
+            );
+            
+            if (distance < zone.radius) {
+                status = zone.status;
+                break;
+            }
+        }
+        
+        // Atau gunakan algoritma random dengan probabilitas tertentu
+        // untuk area yang tidak termasuk dalam zona khusus
+        if (status === 'Lancar') {
+            const rand = Math.random();
+            if (rand < 0.4) { // 40% kemungkinan lancar
+                status = 'Lancar';
+            } else if (rand < 0.7) { // 30% kemungkinan padat
+                status = 'Padat';
+            } else { // 30% kemungkinan macet
+                status = 'Macet';
+            }
+        }
+        
+        // Update status di form
+        setTrafficStatus(status);
+        
+        // Sembunyikan loading indicator
+        document.getElementById('status_loading').classList.add('hidden');
+        
+        // Tampilkan notifikasi
+        showStatusNotification(status);
+        
+    }, 1500); // Delay 1.5 detik untuk simulasi
+}
+
+// Fungsi untuk menampilkan notifikasi status
+function showStatusNotification(status) {
+    let message = '';
+    let colorClass = '';
+    
+    switch(status) {
+        case 'Lancar':
+            message = '🚗 Lalu lintas lancar di lokasi ini';
+            colorClass = 'alert-success';
+            break;
+        case 'Padat':
+            message = '⚠️ Lalu lintas padat di lokasi ini';
+            colorClass = 'alert-warning';
+            break;
+        case 'Macet':
+            message = '🚫 Lalu lintas macet di lokasi ini';
+            colorClass = 'alert-error';
+            break;
+        default:
+            message = 'ℹ️ Status lalu lintas terdeteksi';
+            colorClass = 'alert-info';
+    }
+    
+    // Buat elemen notifikasi
+    const notification = document.createElement('div');
+    notification.className = `alert ${colorClass} shadow-lg mt-2`;
+    notification.innerHTML = `
+        <div>
+            <span>${message}</span>
+        </div>
+        <button class="btn btn-sm" onclick="this.parentElement.remove()">✕</button>
+    `;
+    
+    // Tambahkan notifikasi ke container
+    const container = document.getElementById('status_kemacetan_container');
+    // Hapus notifikasi sebelumnya jika ada
+    const oldAlert = container.querySelector('.alert');
+    if (oldAlert) {
+        oldAlert.remove();
+    }
+    container.appendChild(notification);
+    
+    // Hapus notifikasi setelah 5 detik
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// Event ketika lokasi dipilih dari geocoder
+geocoder.on('result', (e) => {
+    const { center, place_name, context } = e.result;
+    const lat = center[1];
+    const lon = center[0];
+    
+    // Set koordinat
+    document.getElementById('longitude').value = lon;
+    document.getElementById('latitude').value = lat;
+    
+    // Set alamat
+    document.getElementById('alamat').value = place_name;
+    
+    // Parse informasi lokasi dari context
+    let kecamatan = '';
+    let kota = '';
+    let provinsi = '';
+    let kodePos = '';
+    
+    if (context) {
+        context.forEach(item => {
+            if (item.id.includes('place')) {
+                kecamatan = item.text;
+            } else if (item.id.includes('district')) {
+                kecamatan = item.text;
+            } else if (item.id.includes('region')) {
+                kota = item.text;
+            } else if (item.id.includes('postcode')) {
+                kodePos = item.text;
+            } else if (item.id.includes('country')) {
+                provinsi = item.text;
+            }
+        });
+    }
+    
+    document.getElementById('kecamatan').value = kecamatan;
+    document.getElementById('kota').value = kota;
+    document.getElementById('provinsi').value = provinsi;
+    document.getElementById('kode_pos').value = kodePos;
+    
+    // Update marker
+    if (marker) {
+        marker.remove();
+    }
+    marker = new mapboxgl.Marker()
+        .setLngLat(center)
+        .addTo(map);
+    
+    // Zoom ke lokasi
+    map.flyTo({
+        center: center,
+        zoom: 15
+    });
+    
+    // Deteksi status kemacetan otomatis
+    detectTrafficStatus(lat, lon);
+});
+
+// Event ketika peta diklik
+map.on('click', (e) => {
+    const lat = e.lngLat.lat;
+    const lon = e.lngLat.lng;
+    
+    // Set koordinat
+    document.getElementById('latitude').value = lat;
+    document.getElementById('longitude').value = lon;
+    
+    // Update atau tambah marker
+    if (marker) {
+        marker.remove();
+    }
+    marker = new mapboxgl.Marker()
+        .setLngLat([lon, lat])
+        .addTo(map);
+    
+    // Reverse geocoding untuk mendapatkan alamat
+    getAddressFromCoordinates(lat, lon);
+    
+    // Deteksi status kemacetan otomatis
+    detectTrafficStatus(lat, lon);
+});
+
+// Fungsi untuk reverse geocoding
+function getAddressFromCoordinates(lat, lon) {
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${mapboxgl.accessToken}`;
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.features && data.features.length > 0) {
+                const place = data.features[0];
+                
+                // Set alamat
+                document.getElementById('alamat').value = place.place_name;
+                
+                // Parse context untuk informasi detail
+                let kecamatan = '';
+                let kota = '';
+                let provinsi = '';
+                let kodePos = '';
+                
+                if (place.context) {
+                    place.context.forEach(item => {
+                        if (item.id.includes('place')) {
+                            kecamatan = item.text;
+                        } else if (item.id.includes('district')) {
+                            kecamatan = item.text;
+                        } else if (item.id.includes('region')) {
+                            kota = item.text;
+                        } else if (item.id.includes('postcode')) {
+                            kodePos = item.text;
+                        } else if (item.id.includes('country')) {
+                            provinsi = item.text;
+                        }
+                    });
+                }
+                
+                document.getElementById('kecamatan').value = kecamatan;
+                document.getElementById('kota').value = kota;
+                document.getElementById('provinsi').value = provinsi;
+                document.getElementById('kode_pos').value = kodePos;
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching address:', error);
+        });
+}
+
+// Fungsi untuk menyimpan data ke database
+function saveToDatabase(formData) {
+    try {
+        // Simpan data ke database
+        const newLokasi = Database.addLokasi(formData);
+        
+        // Tampilkan pesan sukses
+        const successHtml = `
+            <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4">
+                    <div class="text-center">
+                        <div class="text-green-500 text-6xl mb-4">✓</div>
+                        <h2 class="text-2xl font-bold mb-2">Data Berhasil Disimpan!</h2>
+                        <p class="text-gray-600 mb-6">
+                            Data lokasi kemacetan telah berhasil ditambahkan ke database.
+                        </p>
+                        <div class="space-y-3">
+                            <button onclick="window.location.href='index.html'" 
+                                class="btn btn-primary w-full">
+                                Kembali ke Dashboard
+                            </button>
+                            <button onclick="resetForm()" 
+                                class="btn btn-outline w-full">
+                                Tambah Data Lagi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', successHtml);
+        
+    } catch (error) {
+        alert('Gagal menyimpan data: ' + error.message);
+        console.error('Error:', error);
+    }
+}
+
+// Fungsi untuk reset form
+function resetForm() {
+    // Hapus modal sukses
+    const modal = document.querySelector('.fixed.inset-0');
+    if (modal) modal.remove();
+    
+    // Reset form
+    document.getElementById('formTambah').reset();
+    document.getElementById('latitude').value = '';
+    document.getElementById('longitude').value = '';
+    document.getElementById('traffic_level').value = '';
+    
+    // Reset status display
+    setTrafficStatus('Belum terdeteksi');
+    
+    // Hapus marker dari peta
+    if (marker) {
+        marker.remove();
+        marker = null;
+    }
+    
+    // Reset peta ke posisi default
+    map.flyTo({
+        center: [106.816, -6.200],
+        zoom: 11
+    });
+}
+
+// Validasi form sebelum submit
+document.getElementById('formTambah').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const latitude = document.getElementById('latitude').value;
+    const longitude = document.getElementById('longitude').value;
+    const trafficLevel = document.getElementById('traffic_level').value;
+    const alamat = document.getElementById('alamat').value;
+    
+    // Validasi
+    if (!latitude || !longitude) {
+        alert('Silakan pilih lokasi di peta terlebih dahulu!');
+        return;
+    }
+    
+    if (!trafficLevel) {
+        alert('Silakan klik peta untuk mendeteksi status kemacetan!');
+        return;
+    }
+    
+    if (!alamat.trim()) {
+        alert('Alamat tidak boleh kosong!');
+        return;
+    }
+    
+    // Kumpulkan semua data form
+    const formData = {
+        alamat: document.getElementById('alamat').value,
+        latitude: parseFloat(document.getElementById('latitude').value),
+        longitude: parseFloat(document.getElementById('longitude').value),
+        kecamatan: document.getElementById('kecamatan').value,
+        kota: document.getElementById('kota').value,
+        provinsi: document.getElementById('provinsi').value,
+        kode_pos: document.getElementById('kode_pos').value,
+        traffic_level: document.getElementById('traffic_level').value
+    };
+    
+    // Tampilkan konfirmasi
+    const confirmation = confirm(`Simpan data lokasi baru?\n\nAlamat: ${formData.alamat}\nStatus: ${formData.traffic_level}\nKoordinat: ${formData.latitude}, ${formData.longitude}`);
+    
+    if (confirmation) {
+        saveToDatabase(formData);
+    }
+});
+
+// Tambahkan kontrol navigasi ke peta
+map.addControl(new mapboxgl.NavigationControl());
+
+// Inisialisasi default status
+setTrafficStatus('Belum terdeteksi');
+</script>
+
+</body>
+</html>

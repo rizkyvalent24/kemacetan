@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <title>Data Lokasi Kemacetan</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <!-- Tailwind + DaisyUI -->
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@2.18.1/dist/full.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Database Local -->
+    <script src="database.js"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">📊 Data Lokasi Kemacetan Lengkap</h1>
+            <p class="text-gray-600">Berikut adalah seluruh data lokasi kemacetan yang tersimpan dalam database</p>
+            <div class="flex gap-2 mt-4">
+                <a href="index.html" class="btn btn-sm btn-outline">← Kembali ke Dashboard</a>
+                <a href="form_tambah.html" class="btn btn-sm btn-primary">+ Tambah Lokasi Baru</a>
+            </div>
+        </div>
+        
+        <!-- Filter -->
+        <div class="glass bg-white rounded-xl shadow p-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Cari Berdasarkan:</label>
+                    <input type="text" id="searchInput" placeholder="Alamat, Kecamatan, atau Kota..." class="input input-bordered w-full">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Status Kemacetan:</label>
+                    <select id="statusFilter" class="select select-bordered w-full">
+                        <option value="">Semua Status</option>
+                        <option value="Lancar">Lancar</option>
+                        <option value="Padat">Padat</option>
+                        <option value="Macet">Macet</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Urutkan Berdasarkan:</label>
+                    <select id="sortBy" class="select select-bordered w-full">
+                        <option value="no">No Data</option>
+                        <option value="kota">Kota</option>
+                        <option value="traffic_level">Status</option>
+                        <option value="created_at">Tanggal</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-4">
+                <button id="btnFilter" class="btn btn-primary">Terapkan Filter</button>
+                <button id="btnReset" class="btn btn-outline">Reset</button>
+            </div>
+        </div>
+        
+        <!-- Data Table -->
+        <div class="glass bg-white rounded-xl shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="table w-full">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="font-semibold">No</th>
+                            <th class="font-semibold">Alamat</th>
+                            <th class="font-semibold">Koordinat</th>
+                            <th class="font-semibold">Wilayah</th>
+                            <th class="font-semibold">Status</th>
+                            <th class="font-semibold">Tanggal Dibuat</th>
+                            <th class="font-semibold text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataTableBody">
+                        <!-- Data akan diisi oleh JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Empty State -->
+            <div id="emptyState" class="hidden text-center py-8">
+                <div class="text-gray-400 text-6xl mb-4">📭</div>
+                <h3 class="text-xl font-semibold text-gray-600 mb-2">Tidak Ada Data</h3>
+                <p class="text-gray-500 mb-4">Belum ada data lokasi kemacetan yang tersimpan.</p>
+                <a href="form_tambah.html" class="btn btn-primary">+ Tambah Data Pertama</a>
+            </div>
+        </div>
+        
+        <!-- Export Section -->
+        <div class="mt-6 text-right">
+            <button onclick="exportToJSON()" class="btn btn-outline btn-sm mr-2">📥 Export JSON</button>
+            <button onclick="clearDatabase()" class="btn btn-error btn-sm">🗑️ Hapus Semua Data</button>
+        </div>
+        
+        <!-- Info -->
+        <div class="mt-8 text-center text-sm text-gray-500">
+            <p>Total data tersimpan: <span id="totalData" class="font-semibold">0</span> lokasi</p>
+            <p class="mt-1">Data disimpan di browser menggunakan LocalStorage</p>
+        </div>
+    </div>
+
+    <script>
+    // Fungsi untuk memuat dan menampilkan data
+    function loadData() {
+        let lokasiList = Database.getAllLokasi();
+        
+        // Apply filters
+        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        const statusFilter = document.getElementById('statusFilter').value;
+        const sortBy = document.getElementById('sortBy').value;
+        
+        if (searchTerm) {
+            lokasiList = lokasiList.filter(lokasi => 
+                lokasi.alamat.toLowerCase().includes(searchTerm) ||
+                lokasi.kecamatan.toLowerCase().includes(searchTerm) ||
+                lokasi.kota.toLowerCase().includes(searchTerm) ||
+                lokasi.provinsi.toLowerCase().includes(searchTerm)
+            );
+        }
+        
+        if (statusFilter) {
+            lokasiList = lokasiList.filter(lokasi => lokasi.traffic_level === statusFilter);
+        }
+        
+        // Apply sorting
+        lokasiList = Database.sortLokasi(lokasiList, sortBy, 'ASC');
+        
+        // Update total data
+        document.getElementById('totalData').textContent = lokasiList.length;
+        
+        const tableBody = document.getElementById('dataTableBody');
+        const emptyState = document.getElementById('emptyState');
+        
+        if (lokasiList.length === 0) {
+            tableBody.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        emptyState.classList.add('hidden');
+        tableBody.innerHTML = '';
+        
+        lokasiList.forEach(lokasi => {
+            // Format tanggal
+            const tanggal = new Date(lokasi.created_at).toLocaleDateString('id-ID', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            // Badge status
+            let badgeClass = 'badge ';
+            let badgeText = lokasi.traffic_level;
+            
+            switch(lokasi.traffic_level) {
+                case 'Lancar':
+                    badgeClass += 'badge-success';
+                    break;
+                case 'Padat':
+                    badgeClass += 'badge-warning';
+                    break;
+                case 'Macet':
+                    badgeClass += 'badge-error';
+                    break;
+                default:
+                    badgeClass += 'badge-neutral';
+            }
+            
+            const row = `
+                <tr class="hover:bg-gray-50">
+                    <td class="font-medium">${lokasi.no}</td>
+                    <td>${lokasi.alamat}</td>
+                    <td class="text-xs">
+                        <span class="font-mono">${lokasi.latitude.toFixed(6)}</span><br>
+                        <span class="font-mono">${lokasi.longitude.toFixed(6)}</span>
+                    </td>
+                    <td>
+                        <div class="font-medium">${lokasi.kecamatan}</div>
+                        <div class="text-sm text-gray-600">${lokasi.kota}, ${lokasi.provinsi}</div>
+                    </td>
+                    <td><span class="${badgeClass}">${badgeText}</span></td>
+                    <td class="text-sm">${tanggal}</td>
+                    <td class="text-center">
+                        <div class="flex justify-center gap-1">
+                            <a href="form_ubah.html?no=${lokasi.no}" class="btn btn-xs btn-info">Ubah</a>
+                            <button onclick="deleteData(${lokasi.no})" class="btn btn-xs btn-error">Hapus</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            
+            tableBody.innerHTML += row;
+        });
+    }
+    
+    // Fungsi hapus data
+    function deleteData(no) {
+        if (confirm('Apakah Anda yakin ingin menghapus data ini?')) {
+            const success = Database.deleteLokasi(no);
+            if (success) {
+                alert('Data berhasil dihapus!');
+                loadData();
+            } else {
+                alert('Gagal menghapus data!');
+            }
+        }
+    }
+    
+    // Fungsi export data ke JSON
+    function exportToJSON() {
+        const data = Database.getAllLokasi();
+        const jsonString = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `data_kemacetan_${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        alert('Data berhasil diexport!');
+    }
+    
+    // Fungsi hapus semua data
+    function clearDatabase() {
+        if (confirm('PERINGATAN: Ini akan menghapus SEMUA data dari database. Apakah Anda yakin?')) {
+            if (confirm('Data yang dihapus tidak dapat dikembalikan. Tekan OK untuk melanjutkan.')) {
+                localStorage.removeItem('kemacetan_db');
+                Database.initDatabase(); // Reset dengan data awal
+                alert('Semua data telah dihapus! Database direset ke data awal.');
+                loadData();
+            }
+        }
+    }
+    
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', loadData);
+    document.getElementById('btnFilter').addEventListener('click', loadData);
+    document.getElementById('btnReset').addEventListener('click', function() {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('statusFilter').value = '';
+        document.getElementById('sortBy').value = 'no';
+        loadData();
+    });
+    
+    // Cari saat mengetik (debounce)
+    let searchTimeout;
+    document.getElementById('searchInput').addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(loadData, 300);
+    });
+    </script>
+</body>
+</html>

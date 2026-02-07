@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Dashboard Kemacetan</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Tailwind + DaisyUI -->
+<link href="https://cdn.jsdelivr.net/npm/daisyui@2.18.1/dist/full.css" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<!-- Leaflet Routing Machine -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+<script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+
+<!-- Database Local -->
+<script src="database.js"></script>
+
+<style>
+.glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(14px); }
+body { background: linear-gradient(135deg, #0f172a, #1e293b, #020617); }
+a.glass:hover { transform: scale(1.03); transition: all 0.2s ease-in-out; }
+#map { height: 400px; width: 100%; border-radius: 1rem; }
+#route_panel { transition: all 0.3s ease; }
+.route-highlight { animation: highlightPulse 2s ease-in-out; }
+@keyframes highlightPulse {
+    0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+</style>
+</head>
+<body data-theme="corporate" class="min-h-screen text-slate-800">
+<div class="max-w-7xl mx-auto px-6 py-10 space-y-10">
+
+<!-- HEADER -->
+<div class="rounded-3xl bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 text-white p-8 shadow-2xl flex flex-col md:flex-row justify-between gap-6">
+    <div>
+        <h1 class="text-3xl font-extrabold tracking-wide">🚦 Dashboard Kemacetan Lalu Lintas</h1>
+        <p class="opacity-90 mt-1">Sistem Informasi Monitoring Kemacetan Lalu Lintas Berbasis Web dengan API Mapbox, Tomtom, Leaflet.</p>
+        <p class="opacity-90 mt-1">Oleh Rizky Valent 10123069 IF2 </p>
+    </div>
+    <div class="flex gap-3">
+        <a href="form_tambah.html" class="btn btn-sm bg-white text-blue-700 hover:bg-gray-100 shadow">+ Tambah Lokasi</a>
+        <a href="posisi_saya.html" class="btn btn-sm btn-outline text-white border-white hover:bg-white hover:text-blue-700">📍 Posisi Saya</a>
+        <button id="btn_show_route" class="btn btn-sm btn-accent">🧭 Rute & Navigasi</button>
+    </div>
+</div>
+
+<!-- MINI MAP -->
+<div class="glass shadow-2xl p-6 border border-white/40">
+    <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+        <span>🗺️ Peta Lokasi Kemacetan</span>
+        <span id="map_status" class="badge badge-sm badge-info hidden">Mode Rute Aktif</span>
+    </h2>
+    <div class="mb-4 flex flex-col md:flex-row gap-2">
+        <input type="text" id="search_map" placeholder="Cari lokasi di seluruh dunia..." class="input input-bordered w-full md:flex-1">
+        <button id="btn_search_map" class="btn btn-sm btn-primary">Cari</button>
+        <button id="btn_my_position" class="btn btn-sm btn-accent">📍 Posisi Saya</button>
+        <button id="btn_clear_route" class="btn btn-sm btn-error hidden">🗑️ Hapus Rute</button>
+    </div>
+    <div id="map"></div>
+</div>
+
+<!-- PANEL RUTE & NAVIGASI -->
+<div id="route_panel" class="glass shadow-2xl p-6 border border-white/40 mt-4 hidden transition-all duration-300">
+    <h2 class="text-lg font-bold mb-4 flex items-center justify-between">
+        <span class="flex items-center gap-2">🧭 Rute & Navigasi</span>
+        <button id="btn_close_route" class="btn btn-xs btn-circle btn-ghost">✕</button>
+    </h2>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div class="space-y-2">
+            <label class="font-semibold text-sm">📍 Lokasi Asal</label>
+            <div class="flex gap-2">
+                <input type="text" id="route_start" placeholder="Masukkan alamat asal..." class="input input-bordered w-full">
+                <button id="btn_current_location" class="btn btn-sm btn-accent" title="Gunakan posisi saat ini">📍</button>
+            </div>
+        </div>
+        
+        <div class="space-y-2">
+            <label class="font-semibold text-sm">🎯 Lokasi Tujuan</label>
+            <div class="flex gap-2">
+                <input type="text" id="route_end" placeholder="Masukkan alamat tujuan..." class="input input-bordered w-full">
+                <button id="btn_select_from_map" class="btn btn-sm btn-secondary" title="Pilih dari peta">🗺️</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-2 mb-4">
+        <button id="btn_route" class="btn btn-sm btn-primary w-full">🗺️ Tampilkan Rute</button>
+        <button id="btn_route_details" class="btn btn-sm btn-info w-full" disabled>📊 Detail Rute</button>
+        <button id="btn_print_route" class="btn btn-sm btn-warning w-full" disabled>🖨️ Cetak Rute</button>
+        <button id="btn_clear_all" class="btn btn-sm btn-error w-full">🗑️ Bersihkan</button>
+    </div>
+    
+    <!-- Info Rute -->
+    <div id="route_info" class="hidden bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h3 class="font-bold text-blue-800 mb-2">📊 Informasi Rute</h3>
+        <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+                <span class="text-blue-700">Jarak:</span>
+                <span class="font-semibold" id="route_distance">-</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-blue-700">Waktu Tempuh:</span>
+                <span class="font-semibold" id="route_duration">-</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-blue-700">Status Lalu Lintas:</span>
+                <span class="font-semibold" id="route_traffic">-</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- STATISTIK -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+<a href="data_lokasi.html" class="glass rounded-2xl shadow-xl p-6 border border-white/40 text-center">
+    <p class="text-gray-500 text-sm">Total Lokasi</p>
+    <p class="text-4xl font-bold mt-2" id="totalLokasi">0</p>
+</a>
+<a href="data_lokasi.html?status=Lancar" class="glass rounded-2xl shadow-xl p-6 border border-green-300 text-center">
+    <p class="text-green-700 text-sm">Lancar</p>
+    <p class="text-4xl font-bold text-green-600 mt-2" id="totalLancar">0</p>
+    <p class="text-green-700 text-sm mt-1" id="pctLancar">0%</p>
+</a>
+<a href="data_lokasi.html?status=Padat" class="glass rounded-2xl shadow-xl p-6 border border-yellow-300 text-center">
+    <p class="text-yellow-700 text-sm">Padat</p>
+    <p class="text-4xl font-bold text-yellow-500 mt-2" id="totalPadat">0</p>
+    <p class="text-yellow-700 text-sm mt-1" id="pctPadat">0%</p>
+</a>
+<a href="data_lokasi.html?status=Macet" class="glass rounded-2xl shadow-xl p-6 border border-red-300 text-center">
+    <p class="text-red-700 text-sm">Macet</p>
+    <p class="text-4xl font-bold text-red-600 mt-2" id="totalMacet">0</p>
+    <p class="text-red-700 text-sm mt-1" id="pctMacet">0%</p>
+</a>
+</div>
+
+<!-- TABLE & PENCARIAN KOTA -->
+<div class="glass rounded-3xl shadow-2xl p-6 border border-white/40 overflow-x-auto">
+<h2 class="text-lg font-bold mb-4">📍 Data Lokasi Kemacetan</h2>
+
+<!-- Pencarian Kota -->
+<div class="mb-4 flex flex-col md:flex-row gap-2 items-center">
+    <input type="text" id="input_kota" name="cari_kota" placeholder="Cari berdasarkan kota, kecamatan, atau alamat..." class="input input-bordered w-full md:flex-1">
+    <button id="btn_cari_kota" class="btn btn-sm btn-primary">Cari</button>
+    <button id="btn_reset" class="btn btn-sm btn-outline">Reset</button>
+</div>
+
+<!-- Sorting -->
+<div class="mb-4 flex items-center gap-2">
+    <label class="font-semibold text-white">Urutkan berdasarkan Kota:</label>
+    <select id="sort_kota" class="select select-bordered">
+        <option value="ASC">A → Z</option>
+        <option value="DESC">Z → A</option>
+    </select>
+</div>
+
+<table class="table w-full">
+<thead>
+<tr class="bg-slate-100 text-slate-700">
+    <th>No</th>
+    <th>Alamat</th>
+    <th>Koordinat</th>
+    <th>Wilayah</th>
+    <th>Status</th>
+    <th>Tanggal Dibuat</th>
+    <th class="text-center">Aksi</th>
+</tr>
+</thead>
+<tbody id="tableBody">
+<!-- Data akan diisi oleh JavaScript -->
+</tbody>
+</table>
+</div>
+
+<!-- GRAFIK -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="glass rounded-3xl shadow-2xl p-6 border border-white/40">
+    <h3 class="font-bold mb-4 text-center">Diagram Batang Kemacetan</h3>
+    <canvas id="barChart"></canvas>
+</div>
+<div class="glass rounded-3xl shadow-2xl p-6 border border-white/40">
+    <h3 class="font-bold mb-4 text-center">Diagram Lingkaran Kemacetan</h3>
+    <canvas id="pieChart"></canvas>
+</div>
+</div>
+
+<footer class="text-center text-sm text-slate-300 pt-10">
+    Rizky Valent 10123069 IF2
+</footer>
+</div>
+
+<script>
+// Inisialisasi database
+Database.initDatabase();
+
+// Variable untuk chart
+let barChart = null;
+let pieChart = null;
+
+// --- Leaflet Map ---
+var map = L.map('map', {preferCanvas:true}).setView([-6.200,106.816],11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+
+// Variable untuk routing
+let routingControl = null;
+let routeMarkers = [];
+let routeSelectionMode = false;
+
+// Ambil statistik dari database
+function loadStatistics() {
+    const stats = Database.getStatistics();
+    
+    document.getElementById('totalLokasi').textContent = stats.total;
+    document.getElementById('totalLancar').textContent = stats.lancar;
+    document.getElementById('totalPadat').textContent = stats.padat;
+    document.getElementById('totalMacet').textContent = stats.macet;
+    document.getElementById('pctLancar').textContent = stats.lancar_pct + '%';
+    document.getElementById('pctPadat').textContent = stats.padat_pct + '%';
+    document.getElementById('pctMacet').textContent = stats.macet_pct + '%';
+    
+    // Update charts
+    updateCharts(stats);
+}
+
+// Update grafik
+function updateCharts(stats) {
+    const barCanvas = document.getElementById('barChart');
+    const pieCanvas = document.getElementById('pieChart');
+    
+    // Hancurkan chart lama jika ada
+    if (barChart) barChart.destroy();
+    if (pieChart) pieChart.destroy();
+    
+    // Buat chart batang baru
+    barChart = new Chart(barCanvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: ['Lancar', 'Padat', 'Macet'],
+            datasets: [{
+                label: 'Jumlah Lokasi',
+                data: [stats.lancar, stats.padat, stats.macet],
+                backgroundColor: ['#22c55e', '#facc15', '#ef4444'],
+                borderColor: ['#16a34a', '#eab308', '#dc2626'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+    
+    // Buat chart pie baru
+    pieChart = new Chart(pieCanvas.getContext('2d'), {
+        type: 'pie',
+        data: {
+            labels: ['Lancar', 'Padat', 'Macet'],
+            datasets: [{
+                data: [stats.lancar, stats.padat, stats.macet],
+                backgroundColor: ['#22c55e', '#facc15', '#ef4444'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+// Load dan tampilkan data tabel
+function loadTableData() {
+    let lokasiList = Database.getAllLokasi();
+    const searchKeyword = document.getElementById('input_kota').value.trim();
+    const sortOrder = document.getElementById('sort_kota').value;
+    
+    // Filter jika ada pencarian
+    if (searchKeyword) {
+        lokasiList = Database.searchByKota(searchKeyword);
+    }
+    
+    // Sorting
+    lokasiList = Database.sortLokasi(lokasiList, 'kota', sortOrder);
+    
+    // Tampilkan di tabel
+    const tableBody = document.getElementById('tableBody');
+    tableBody.innerHTML = '';
+    
+    if (lokasiList.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center py-8">
+                    <div class="flex flex-col items-center">
+                        <div class="text-gray-400 text-4xl mb-2">📭</div>
+                        <div class="text-gray-500 text-lg mb-2">Tidak ada data lokasi</div>
+                        <a href="form_tambah.html" class="text-blue-600 hover:underline text-sm">
+                            + Tambah data lokasi pertama
+                        </a>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    lokasiList.forEach(lokasi => {
+        // Format tanggal
+        const date = new Date(lokasi.created_at);
+        const tanggal = date.toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        // Tentukan badge berdasarkan status
+        let badge = '';
+        if (lokasi.traffic_level === "Lancar") {
+            badge = "<span class='badge badge-success'>Lancar</span>";
+        } else if (lokasi.traffic_level === "Padat") {
+            badge = "<span class='badge badge-warning'>Padat</span>";
+        } else if (lokasi.traffic_level === "Macet") {
+            badge = "<span class='badge badge-error'>Macet</span>";
+        } else {
+            badge = "<span class='badge badge-neutral'>-</span>";
+        }
+        
+        const row = `
+            <tr class='hover:bg-slate-50 transition-colors'>
+                <td class="font-semibold">${lokasi.no}</td>
+                <td class='max-w-xs truncate' title="${lokasi.alamat}">${lokasi.alamat}</td>
+                <td class='text-xs'>
+                    <span class="font-mono">${lokasi.latitude.toFixed(6)}</span><br>
+                    <span class="font-mono">${lokasi.longitude.toFixed(6)}</span>
+                </td>
+                <td>
+                    <div class="font-medium">${lokasi.kecamatan || '-'}</div>
+                    <div class="text-sm text-gray-600">${lokasi.kota || '-'}</div>
+                </td>
+                <td>${badge}</td>
+                <td class="text-sm">${tanggal}</td>
+                <td class='text-center space-x-1'>
+                    <a href='form_ubah.html?no=${lokasi.no}' class='btn btn-xs btn-info'>Ubah</a>
+                    <button onclick="deleteLokasi(${lokasi.no})" class='btn btn-xs btn-error'>Hapus</button>
+                </td>
+            </tr>
+        `;
+        
+        tableBody.innerHTML += row;
+    });
+}
+
+// Fungsi untuk menampilkan marker di peta
+function loadMapData() {
+    // Hapus semua marker lama (kecuali route markers jika ada)
+    map.eachLayer(function(layer) {
+        if ((layer instanceof L.CircleMarker || layer instanceof L.Marker) && !routeMarkers.includes(layer)) {
+            map.removeLayer(layer);
+        }
+    });
+    
+    // Ambil data dari database
+    const lokasiList = Database.getAllLokasi();
+    
+    // Tambahkan marker untuk setiap lokasi
+    lokasiList.forEach(function(loc) {
+        // Tentukan warna berdasarkan status
+        let color = 'gray'; // default
+        if (loc.traffic_level === 'Lancar') {
+            color = 'green';
+        } else if (loc.traffic_level === 'Padat') {
+            color = 'orange';
+        } else if (loc.traffic_level === 'Macet') {
+            color = 'red';
+        }
+        
+        // Buat marker dengan circle
+        const marker = L.circleMarker([loc.latitude, loc.longitude], {
+            color: color,
+            radius: 8,
+            fillOpacity: 0.8,
+            weight: 2
+        }).addTo(map);
+        
+        // Tambahkan popup dengan informasi
+        marker.bindPopup(`
+            <div class="p-2 min-w-[250px]">
+                <h3 class="font-bold text-lg mb-1">Lokasi #${loc.no}</h3>
+                <p class="mb-2 text-sm">${loc.alamat}</p>
+                <div class="space-y-1">
+                    <div class="flex items-center">
+                        <span class="font-medium text-sm">Status:</span>
+                        <span class="ml-2 px-2 py-1 rounded text-xs font-semibold ${loc.traffic_level === 'Lancar' ? 'bg-green-100 text-green-800' : loc.traffic_level === 'Padat' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}">
+                            ${loc.traffic_level}
+                        </span>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="font-medium text-sm">Wilayah:</span>
+                        <span class="ml-2 text-sm">${loc.kecamatan}, ${loc.kota}</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="font-medium text-sm">Koordinat:</span>
+                        <span class="ml-2 text-xs">${loc.latitude.toFixed(6)}, ${loc.longitude.toFixed(6)}</span>
+                    </div>
+                    <div class="mt-3 flex gap-2">
+                        <button onclick="useAsRoutePoint('${loc.alamat}', ${loc.latitude}, ${loc.longitude})" 
+                                class="btn btn-xs btn-primary">📍 Gunakan untuk Rute</button>
+                        <a href="form_ubah.html?no=${loc.no}" class="btn btn-xs btn-info">✏️ Ubah</a>
+                    </div>
+                </div>
+            </div>
+        `);
+        
+        // Event hover untuk highlight
+        marker.on('mouseover', function() {
+            this.openPopup();
+        });
+        
+        marker.on('mouseout', function() {
+            this.closePopup();
+        });
+        
+        // Event click untuk memilih sebagai titik rute
+        marker.on('click', function(e) {
+            if (routeSelectionMode) {
+                const alamat = loc.alamat;
+                const lat = loc.latitude;
+                const lon = loc.longitude;
+                
+                // Tentukan apakah ini titik awal atau akhir
+                if (!document.getElementById('route_start').value) {
+                    document.getElementById('route_start').value = alamat;
+                    showNotification(`📍 Titik awal ditetapkan: ${alamat}`, 'success');
+                } else if (!document.getElementById('route_end').value) {
+                    document.getElementById('route_end').value = alamat;
+                    showNotification(`🎯 Titik akhir ditetapkan: ${alamat}`, 'success');
+                    disableRouteSelectionMode();
+                }
+            }
+        });
+    });
+    
+    // Auto zoom jika ada data
+    if (lokasiList.length > 0 && !routingControl) {
+        const bounds = L.latLngBounds(lokasiList.map(loc => [loc.latitude, loc.longitude]));
+        map.fitBounds(bounds, { padding: [50, 50] });
+    }
+}
+
+// Fungsi hapus lokasi
+function deleteLokasi(no) {
+    if (confirm('Apakah Anda yakin ingin menghapus data lokasi ini?')) {
+        const success = Database.deleteLokasi(no);
+        if (success) {
+            // Tampilkan notifikasi
+            showNotification('Data berhasil dihapus!', 'success');
+            
+            // Refresh data
+            refreshAllData();
+        } else {
+            showNotification('Gagal menghapus data!', 'error');
+        }
+    }
+}
+
+// Fungsi untuk menampilkan notifikasi
+function showNotification(message, type = 'info') {
+    // Hapus notifikasi sebelumnya
+    const oldNotification = document.querySelector('.custom-notification');
+    if (oldNotification) oldNotification.remove();
+    
+    // Tentukan warna berdasarkan type
+    let bgColor = 'bg-blue-500';
+    if (type === 'success') bgColor = 'bg-green-500';
+    if (type === 'error') bgColor = 'bg-red-500';
+    if (type === 'warning') bgColor = 'bg-yellow-500';
+    
+    // Buat elemen notifikasi
+    const notification = document.createElement('div');
+    notification.className = `custom-notification fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300`;
+    notification.innerHTML = `
+        <div class="flex items-center">
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-xl">&times;</button>
+        </div>
+    `;
+    
+    // Tambahkan ke body
+    document.body.appendChild(notification);
+    
+    // Auto hapus setelah 3 detik
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 3000);
+}
+
+// Fungsi untuk refresh semua data
+function refreshAllData() {
+    loadStatistics();
+    loadTableData();
+    loadMapData();
+}
+
+// --- Search global untuk peta ---
+async function searchGlobalMap(){
+    const query = document.getElementById('search_map').value.trim();
+    if(!query) return;
+    
+    showNotification('Mencari lokasi...', 'info');
+    
+    try{
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`, {headers: {"User-Agent":"DashboardKemacetan/1.0"}});
+        const data = await res.json();
+        if(data.length>0){
+            const loc = data[0];
+            map.setView([loc.lat, loc.lon], 14);
+            
+            // Tambahkan marker untuk hasil pencarian
+            const searchMarker = L.marker([loc.lat, loc.lon], {
+                title: loc.display_name,
+                icon: L.icon({
+                    iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41]
+                })
+            }).addTo(map);
+            
+            searchMarker.bindPopup(`
+                <div class="p-2">
+                    <h3 class="font-bold mb-2">📍 ${loc.display_name}</h3>
+                    <button onclick="useSearchResultAsRoutePoint('${loc.display_name}', ${loc.lat}, ${loc.lon})" 
+                            class="btn btn-xs btn-primary w-full mt-2">
+                        🗺️ Gunakan untuk Rute
+                    </button>
+                </div>
+            `).openPopup();
+            
+            showNotification('Lokasi ditemukan!', 'success');
+        } else {
+            showNotification('Lokasi tidak ditemukan!', 'error');
+        }
+    } catch(err){ 
+        console.error(err); 
+        showNotification('Terjadi kesalahan saat mencari lokasi.', 'error');
+    }
+}
+
+// --- Posisi Saya ---
+document.getElementById('btn_my_position').addEventListener('click', function(){
+    if(!navigator.geolocation){ 
+        showNotification('Browser Anda tidak mendukung Geolocation.', 'error');
+        return; 
+    }
+    
+    showNotification('Mendapatkan posisi Anda...', 'info');
+    
+    navigator.geolocation.getCurrentPosition(
+        function(pos){
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            map.setView([lat, lon], 15);
+            
+            const myMarker = L.marker([lat, lon], {
+                title: "Posisi Saya",
+                icon: L.icon({
+                    iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41]
+                })
+            }).addTo(map);
+            
+            myMarker.bindPopup(`
+                <div class="p-2">
+                    <h3 class="font-bold mb-2">📍 Posisi Anda Saat Ini</h3>
+                    <p class="text-sm mb-2">Koordinat: ${lat.toFixed(6)}, ${lon.toFixed(6)}</p>
+                    <button onclick="useCurrentPositionAsRoutePoint(${lat}, ${lon})" 
+                            class="btn btn-xs btn-primary w-full">
+                        🗺️ Gunakan sebagai Titik Rute
+                    </button>
+                </div>
+            `).openPopup();
+            
+            showNotification('Posisi berhasil ditemukan!', 'success');
+        }, 
+        function(err){ 
+            showNotification('Gagal mendapatkan posisi: ' + err.message, 'error');
+        }
+    );
+});
+
+// --- PANEL RUTE & NAVIGASI ---
+document.getElementById('btn_show_route').addEventListener('click', function(){
+    const panel = document.getElementById('route_panel');
+    const isHidden = panel.classList.contains('hidden');
+    
+    if (isHidden) {
+        // Tampilkan panel dengan animasi
+        panel.classList.remove('hidden');
+        panel.classList.add('route-highlight');
+        
+        // Scroll ke peta dengan animasi smooth
+        setTimeout(() => {
+            const mapSection = document.querySelector('.glass.shadow-2xl.p-6.border');
+            if (mapSection) {
+                mapSection.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center'
+                });
+                
+                // Highlight section peta
+                mapSection.classList.add('route-highlight');
+                setTimeout(() => {
+                    mapSection.classList.remove('route-highlight');
+                }, 2000);
+                
+                // Update status peta
+                document.getElementById('map_status').classList.remove('hidden');
+            }
+            
+            // Fokus ke input pertama
+            setTimeout(() => {
+                document.getElementById('route_start').focus();
+                showNotification('Masukkan lokasi awal dan tujuan untuk membuat rute', 'info');
+            }, 500);
+        }, 100);
+        
+        // Hapus highlight setelah 2 detik
+        setTimeout(() => {
+            panel.classList.remove('route-highlight');
+        }, 2000);
+    } else {
+        // Sembunyikan panel
+        panel.classList.add('hidden');
+        document.getElementById('map_status').classList.add('hidden');
+    }
+});
+
+// Tombol tutup panel rute
+document.getElementById('btn_close_route').addEventListener('click', function(){
+    const panel = document.getElementById('route_panel');
+    panel.classList.add('hidden');
+    document.getElementById('map_status').classList.add('hidden');
+    disableRouteSelectionMode();
+    showNotification('Panel rute ditutup', 'info');
+});
+
+// Gunakan posisi saat ini sebagai titik awal
+document.getElementById('btn_current_location').addEventListener('click', function(){
+    if(!navigator.geolocation){ 
+        showNotification('Browser tidak mendukung geolokasi', 'error');
+        return; 
+    }
+    
+    showNotification('Mendapatkan posisi Anda...', 'info');
+    
+    navigator.geolocation.getCurrentPosition(
+        function(pos){
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            
+            // Reverse geocoding untuk mendapatkan alamat
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`, {
+                headers: {"User-Agent":"DashboardKemacetan/1.0"}
+            })
+            .then(res => res.json())
+            .then(data => {
+                const address = data.display_name || `Posisi Anda (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+                document.getElementById('route_start').value = address;
+                showNotification(`📍 Posisi Anda ditetapkan sebagai titik awal`, 'success');
+                
+                // Tambahkan marker di peta
+                const marker = L.marker([lat, lon], {
+                    title: "Posisi Anda"
+                }).addTo(map);
+                
+                marker.bindPopup(`<b>📍 Posisi Anda</b><br>${address}`).openPopup();
+                routeMarkers.push(marker);
+                
+                // Zoom ke lokasi
+                map.setView([lat, lon], 14);
+            })
+            .catch(err => {
+                const address = `Posisi Anda (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+                document.getElementById('route_start').value = address;
+                showNotification(`📍 Posisi Anda ditetapkan sebagai titik awal`, 'success');
+            });
+        },
+        function(err){
+            showNotification('Gagal mendapatkan posisi: ' + err.message, 'error');
+        }
+    );
+});
+
+// Aktifkan mode pilih dari peta
+document.getElementById('btn_select_from_map').addEventListener('click', function(){
+    enableRouteSelectionMode();
+    showNotification('Klik pada marker di peta untuk memilih lokasi tujuan', 'info');
+});
+
+// Fungsi untuk mengaktifkan mode pemilihan dari peta
+function enableRouteSelectionMode() {
+    routeSelectionMode = true;
+    document.getElementById('btn_select_from_map').classList.add('btn-active');
+    document.getElementById('map_status').textContent = 'Mode: Pilih Lokasi dari Peta';
+    showNotification('Mode pemilihan aktif. Klik marker di peta untuk memilih lokasi.', 'warning');
+}
+
+// Fungsi untuk menonaktifkan mode pemilihan dari peta
+function disableRouteSelectionMode() {
+    routeSelectionMode = false;
+    document.getElementById('btn_select_from_map').classList.remove('btn-active');
+    document.getElementById('map_status').textContent = 'Mode Rute Aktif';
+}
+
+// Fungsi untuk menggunakan hasil pencarian sebagai titik rute
+function useSearchResultAsRoutePoint(address, lat, lon) {
+    if (!document.getElementById('route_start').value) {
+        document.getElementById('route_start').value = address;
+        showNotification(`📍 Titik awal: ${address.substring(0, 50)}...`, 'success');
+    } else {
+        document.getElementById('route_end').value = address;
+        showNotification(`🎯 Titik akhir: ${address.substring(0, 50)}...`, 'success');
+    }
+}
+
+// Fungsi untuk menggunakan posisi saat ini sebagai titik rute
+function useCurrentPositionAsRoutePoint(lat, lon) {
+    const address = `Posisi Saat Ini (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+    if (!document.getElementById('route_start').value) {
+        document.getElementById('route_start').value = address;
+        showNotification(`📍 Posisi Anda sebagai titik awal`, 'success');
+    } else {
+        document.getElementById('route_end').value = address;
+        showNotification(`🎯 Posisi Anda sebagai titik akhir`, 'success');
+    }
+}
+
+// Fungsi untuk menggunakan lokasi dari marker sebagai titik rute
+function useAsRoutePoint(address, lat, lon) {
+    if (!document.getElementById('route_start').value) {
+        document.getElementById('route_start').value = address;
+        showNotification(`📍 Titik awal: ${address.substring(0, 50)}...`, 'success');
+    } else {
+        document.getElementById('route_end').value = address;
+        showNotification(`🎯 Titik akhir: ${address.substring(0, 50)}...`, 'success');
+    }
+    
+    // Zoom ke lokasi yang dipilih
+    map.setView([lat, lon], 14);
+}
+
+// --- Routing ---
+document.getElementById('btn_route').addEventListener('click', showRoute);
+
+async function showRoute(){
+    const start = document.getElementById('route_start').value.trim();
+    const end   = document.getElementById('route_end').value.trim();
+    
+    if(!start || !end) {
+        showNotification('Isi kedua lokasi (asal dan tujuan)!', 'error');
+        return;
+    }
+    
+    showNotification('Mencari rute terbaik...', 'info');
+    
+    try {
+        // Hapus rute lama jika ada
+        if (routingControl) {
+            map.removeControl(routingControl);
+            routingControl = null;
+        }
+        
+        // Hapus marker lama
+        routeMarkers.forEach(marker => map.removeLayer(marker));
+        routeMarkers = [];
+        
+        const [dataStart, dataEnd] = await Promise.all([
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(start)}&limit=1`, {
+                headers: {"User-Agent":"DashboardKemacetan/1.0"}
+            }).then(r=>r.json()),
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(end)}&limit=1`, {
+                headers: {"User-Agent":"DashboardKemacetan/1.0"}
+            }).then(r=>r.json())
+        ]);
+
+        if(!dataStart.length || !dataEnd.length) {
+            showNotification('Lokasi tidak ditemukan! Pastikan alamat valid.', 'error');
+            return;
+        }
+
+        const startLatLng = [parseFloat(dataStart[0].lat), parseFloat(dataStart[0].lon)];
+        const endLatLng   = [parseFloat(dataEnd[0].lat), parseFloat(dataEnd[0].lon)];
+        
+        // Tambahkan marker untuk titik awal dan akhir
+        const startMarker = L.marker(startLatLng, {
+            title: "Titik Awal",
+            icon: L.icon({
+                iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41]
+            })
+        }).addTo(map);
+        
+        startMarker.bindPopup(`<b>📍 Titik Awal</b><br>${start}`).openPopup();
+        routeMarkers.push(startMarker);
+        
+        const endMarker = L.marker(endLatLng, {
+            title: "Titik Akhir",
+            icon: L.icon({
+                iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41]
+            })
+        }).addTo(map);
+        
+        endMarker.bindPopup(`<b>🎯 Titik Akhir</b><br>${end}`).openPopup();
+        routeMarkers.push(endMarker);
+
+        routingControl = L.Routing.control({
+            waypoints:[
+                L.latLng(startLatLng[0], startLatLng[1]), 
+                L.latLng(endLatLng[0], endLatLng[1])
+            ],
+            routeWhileDragging:false,
+            draggableWaypoints:true,
+            showAlternatives:false,
+            fitSelectedRoutes:true,
+            lineOptions:{
+                styles:[
+                    {color:'#3b82f6', opacity:0.8, weight:6},
+                    {color:'#60a5fa', opacity:0.6, weight:4}
+                ]
+            },
+            createMarker:function(i, wp){ 
+                return null; // Tidak buat marker tambahan
+            },
+            show: true
+        }).addTo(map);
+        
+        // Tampilkan tombol hapus rute
+        document.getElementById('btn_clear_route').classList.remove('hidden');
+        
+        // Aktifkan tombol detail dan cetak
+        document.getElementById('btn_route_details').disabled = false;
+        document.getElementById('btn_print_route').disabled = false;
+        
+        // Tampilkan panel info rute
+        document.getElementById('route_info').classList.remove('hidden');
+        
+        // Hitung jarak dan waktu (simulasi)
+        const distance = calculateDistance(startLatLng[0], startLatLng[1], endLatLng[0], endLatLng[1]);
+        const duration = calculateDuration(distance);
+        
+        document.getElementById('route_distance').textContent = `${distance.toFixed(1)} km`;
+        document.getElementById('route_duration').textContent = `${duration} menit`;
+        
+        // Simulasi status lalu lintas
+        const trafficStatus = simulateTrafficStatus(startLatLng, endLatLng);
+        document.getElementById('route_traffic').textContent = trafficStatus;
+        
+        // Scroll ke peta
+        const mapSection = document.querySelector('.glass.shadow-2xl.p-6.border');
+        if (mapSection) {
+            mapSection.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center'
+            });
+        }
+        
+        showNotification('Rute berhasil ditampilkan!', 'success');
+        
+    } catch(error) {
+        console.error('Error:', error);
+        showNotification('Terjadi kesalahan saat menampilkan rute', 'error');
+    }
+}
+
+// Fungsi untuk menghitung jarak antara dua titik (Haversine formula)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radius bumi dalam km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+// Fungsi untuk menghitung perkiraan waktu tempuh
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radius bumi dalam km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+function calculateDuration(distance) {
+    // Asumsi kecepatan rata-rata 40 km/jam di kota
+    const averageSpeed = 40; // km/jam
+    const timeHours = distance / averageSpeed;
+    return Math.round(timeHours * 60); // Konversi ke menit
+}
+
+// Simulasi status lalu lintas
+function simulateTrafficStatus(start, end) {
+    const statuses = ['Lancar', 'Sedikit Padat', 'Padat', 'Macet'];
+    const randomIndex = Math.floor(Math.random() * statuses.length);
+    return statuses[randomIndex];
+}
+
+// Tombol hapus rute
+document.getElementById('btn_clear_route').addEventListener('click', function(){
+    if (routingControl) {
+        map.removeControl(routingControl);
+        routingControl = null;
+    }
+    
+    // Hapus semua marker rute
+    routeMarkers.forEach(marker => map.removeLayer(marker));
+    routeMarkers = [];
+    
+    // Sembunyikan tombol dan info
+    document.getElementById('btn_clear_route').classList.add('hidden');
+    document.getElementById('route_info').classList.add('hidden');
+    document.getElementById('btn_route_details').disabled = true;
+    document.getElementById('btn_print_route').disabled = true;
+    
+    showNotification('Rute telah dihapus', 'info');
+});
+
+// Tombol bersihkan semua
+document.getElementById('btn_clear_all').addEventListener('click', function(){
+    document.getElementById('route_start').value = '';
+    document.getElementById('route_end').value = '';
+    
+    if (routingControl) {
+        map.removeControl(routingControl);
+        routingControl = null;
+    }
+    
+    routeMarkers.forEach(marker => map.removeLayer(marker));
+    routeMarkers = [];
+    
+    document.getElementById('btn_clear_route').classList.add('hidden');
+    document.getElementById('route_info').classList.add('hidden');
+    document.getElementById('btn_route_details').disabled = true;
+    document.getElementById('btn_print_route').disabled = true;
+    
+    showNotification('Semua input dan rute telah dibersihkan', 'info');
+});
+
+// Tombol detail rute
+document.getElementById('btn_route_details').addEventListener('click', function(){
+    const distance = document.getElementById('route_distance').textContent;
+    const duration = document.getElementById('route_duration').textContent;
+    const traffic = document.getElementById('route_traffic').textContent;
+    
+    alert(`📊 DETAIL RUTE\n\nJarak: ${distance}\nPerkiraan Waktu: ${duration}\nStatus Lalu Lintas: ${traffic}\n\nRute telah ditampilkan di peta.`);
+});
+
+// Tombol cetak rute
+document.getElementById('btn_print_route').addEventListener('click', function(){
+    const start = document.getElementById('route_start').value;
+    const end = document.getElementById('route_end').value;
+    const distance = document.getElementById('route_distance').textContent;
+    const duration = document.getElementById('route_duration').textContent;
+    const traffic = document.getElementById('route_traffic').textContent;
+    
+    const printContent = `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+            <h1 style="color: #3b82f6; border-bottom: 2px solid #3b82f6; padding-bottom: 10px;">
+                🗺️ RUTE PERJALANAN
+            </h1>
+            <div style="margin-top: 20px;">
+                <h2 style="color: #333;">📍 Informasi Rute</h2>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; width: 120px;">Titik Awal:</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${start}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Titik Akhir:</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${end}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Jarak:</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${distance}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Waktu Tempuh:</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${duration}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Status Lalu Lintas:</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${traffic}</td>
+                    </tr>
+                </table>
+            </div>
+            <div style="margin-top: 30px; font-size: 12px; color: #666;">
+                <p>Dicetak dari Dashboard Kemacetan - ${new Date().toLocaleString('id-ID')}</p>
+            </div>
+        </div>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.print();
+});
+
+// --- Sorting kota ---
+document.getElementById('sort_kota').addEventListener('change', loadTableData);
+
+// --- Cari data berdasarkan kota ---
+document.getElementById('btn_cari_kota').addEventListener('click', loadTableData);
+
+// --- Reset pencarian ---
+document.getElementById('btn_reset').addEventListener('click', function() {
+    document.getElementById('input_kota').value = '';
+    loadTableData();
+});
+
+// --- Event listeners untuk peta ---
+document.getElementById('btn_search_map').addEventListener('click', searchGlobalMap);
+document.getElementById('search_map').addEventListener('keypress', function(e){ 
+    if(e.key==='Enter') searchGlobalMap(); 
+});
+
+// --- Resize map ---
+window.addEventListener('resize', ()=>map.invalidateSize());
+
+// Inisialisasi saat halaman dimuat
+document.addEventListener('DOMContentLoaded', function() {
+    refreshAllData();
+    
+    // Check jika ada data baru dari form tambah (URL parameter)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('new')) {
+        showNotification('Data lokasi berhasil ditambahkan!', 'success');
+        // Hapus parameter dari URL tanpa reload
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+});
+
+// Export fungsi ke global scope (untuk digunakan di onclick)
+window.deleteLokasi = deleteLokasi;
+window.useAsRoutePoint = useAsRoutePoint;
+window.useSearchResultAsRoutePoint = useSearchResultAsRoutePoint;
+window.useCurrentPositionAsRoutePoint = useCurrentPositionAsRoutePoint;
+</script>
+
+</body>
+</html>
